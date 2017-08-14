@@ -3,14 +3,17 @@ from threading import Thread
 import numpy as np
 
 class MixerPlayer:
-  def __init__(self, p):
+  def __init__(self, mixer, p):
     self.p = p
+    self.mixer = mixer
     self.stream = None
     self.filename = None
 
     self.muted = False
     self.loop = False
     self.gain = 1.0
+
+    self.output_device_index = None
 
     self.stop_callback = None
 
@@ -73,7 +76,6 @@ class MixerPlayer:
         samples = 0*samples
 
       data = np.getbuffer(samples.astype(dtype=np.int16))
-      print len(data)
       return (data, rv)
 
     # create stream, do not start it
@@ -82,7 +84,8 @@ class MixerPlayer:
                                 rate=rate,
                                 output=True,
                                 stream_callback=callback,
-                                start=False)
+                                start=False,
+                                output_device_index=self.output_device_index)
   
   def play(self):
     self.stream.start_stream()
@@ -99,10 +102,30 @@ class MixerPlayer:
   def set_gain(self, gain):
     self.gain = gain
 
+  def set_output_device(self, device):
+    self.output_device_index = self.mixer.get_device_index_by_name(device)
+    self.reset()
+
 class SoundBoardMixer:
 
   def __init__(self):
     self.p = pyaudio.PyAudio()
   
+    self.api_index = self.p.get_default_host_api_info()['index']
+
+  def get_device_index_by_name(self, device):
+    for i in xrange(0,self.p.get_device_count()):
+      obj = self.p.get_device_info_by_index(i)
+      if obj['name'] == device:
+        return obj['index']
+
+  def get_devices_using_api(self):
+    devices = []
+    for i in xrange(0,self.p.get_device_count()):
+      obj = self.p.get_device_info_by_index(i)
+      if obj['hostApi'] == self.api_index:
+        devices.append(obj['name'])
+    return devices
+
   def new_player(self):
-    return MixerPlayer(self.p)
+    return MixerPlayer(self, self.p)

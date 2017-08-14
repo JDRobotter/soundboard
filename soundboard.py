@@ -23,17 +23,14 @@ class GUIPlayer:
     self.mixer_player.register_stop_callback(self.player_stop_event)
     self.mixer_player.register_status_callback(self.player_status_event)
 
-    fname = GUIPlayer.TEST_WAVS[GUIPlayer.TEST_IT]
-    GUIPlayer.TEST_IT+=1
-    self.mixer_player.load_wav(fname)
-
     # base widget
-    frame = gtk.Frame(fname)
+    frame = gtk.Frame()
     frame.set_size_request(200,200)
 
     align = gtk.Alignment()
     align.set_padding(5,5,5,5)
     align.add(frame)
+    self.frame = frame
 
     self.widget = align
 
@@ -95,8 +92,8 @@ class GUIPlayer:
     button.set_size_request(40,40)
     hbox.pack_start(button,False,False)
     
-    # CONFIGURE
-    button = gtk.Button("C")
+    # OPEN
+    button = gtk.Button("O")
     def _on_button_clicked(w):
       dialog = gtk.FileChooserDialog("Open sample",
                                       self.app.window,
@@ -104,13 +101,79 @@ class GUIPlayer:
                                       (gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL,
                                       gtk.STOCK_OPEN, gtk.RESPONSE_OK))
       dialog.set_default_response(gtk.RESPONSE_OK)
+
+      ff = gtk.FileFilter()
+      ff.set_name(".wav,.mp3")
+      ff.add_pattern("*.wav")
+      ff.add_pattern("*.mp3")
+      dialog.add_filter(ff)
+
       r = dialog.run()
-      print r
+      if r == gtk.RESPONSE_OK:
+        fname = dialog.get_filename()
+        self.load_file(fname)
+
       dialog.destroy()
     button.connect('clicked', _on_button_clicked)
     button.set_size_request(40,40)
     hbox.pack_start(button,False,False)
-  
+ 
+    # CONFIGURE
+    button = gtk.Button("C")
+    def _on_button_clicked(w):
+      dialog = gtk.Dialog("Configure",
+                  None,
+                  gtk.DIALOG_MODAL|gtk.DIALOG_DESTROY_WITH_PARENT,
+                  (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT,
+                    gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
+      
+      frame = gtk.Frame("Output interface")
+      cb = gtk.combo_box_new_text()
+      for device in self.app.mixer.get_devices_using_api():
+        cb.append_text(device)
+      cb.set_active(0)
+      frame.add(cb)
+      dialog.vbox.pack_start(frame)
+      device_cb = cb
+      
+      frame = gtk.Frame("Output mode")
+      cb = gtk.combo_box_new_text()
+      cb.append_text("Stereo")
+      cb.append_text("Right")
+      cb.append_text("Left")
+      cb.set_active(0)
+      frame.add(cb)
+      dialog.vbox.pack_start(frame)
+      mode_cb = cb
+      
+      dialog.vbox.show_all()
+
+      r = dialog.run()
+      if r == gtk.RESPONSE_ACCEPT:
+        try:
+          self.set_output_device(device_cb.get_active_text())
+        except Exception as e:
+          print str(e)
+
+      dialog.destroy()
+
+    button.connect('clicked', _on_button_clicked)
+    button.set_size_request(40,40)
+    hbox.pack_start(button,False,False)
+ 
+
+    # DEBUG
+    fname = GUIPlayer.TEST_WAVS[GUIPlayer.TEST_IT]
+    GUIPlayer.TEST_IT+=1
+    self.load_file(fname)
+
+  def set_output_device(self, device):
+    self.mixer_player.set_output_device(device)
+
+  def load_file(self, filename):
+    self.mixer_player.load_wav(filename)
+    self.frame.set_label(filename)
+
   def set_player_gain(self, gain):
     self.mixer_player.set_gain(gain)
 
