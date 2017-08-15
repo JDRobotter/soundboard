@@ -47,7 +47,10 @@ class GUIPlayer:
     hbox.pack_start(vbox)
 
     # PLAY
-    button = gtk.ToggleButton("PLAY")
+    button = gtk.ToggleButton()
+    image = gtk.Image()
+    image.set_from_stock(gtk.STOCK_MEDIA_PLAY, gtk.ICON_SIZE_BUTTON)
+    button.set_image(image)
     def _on_button_clicked(w):
       if w.get_active():
         self.mixer_player.play()
