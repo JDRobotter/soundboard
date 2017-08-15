@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import os.path
 import gtk,gobject,pango
 
 from audio import SoundBoardMixer
@@ -180,7 +181,7 @@ class GUIPlayer:
     if device_mode is not None:
       self.set_output_device_mode(device_mode)
     if gain is not None:
-      self.volume_vscale.set_value(gain)
+      self.volume_vscale.set_value(100.0*gain)
 
   def config_set(self, key, value):
     self.app.config.set(self.xy, key, value)
@@ -194,7 +195,7 @@ class GUIPlayer:
 
   def load_file(self, filename):
     self.mixer_player.load_wav(filename)
-    self.frame.set_label(filename)
+    self.frame.set_label(os.path.basename(filename))
     self.config_set('filename',filename)
 
   def set_player_gain(self, gain):

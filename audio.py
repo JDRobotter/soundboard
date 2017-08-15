@@ -38,6 +38,9 @@ class AudioFile:
   def close(self):
     pass
 
+  def rewind(self):
+    pass
+
 class WaveFile(AudioFile):
 
   def __init__(self, filename):
@@ -58,6 +61,9 @@ class WaveFile(AudioFile):
   def close(self):
     self.wf.close()
 
+  def rewind(self):
+    self.wf.rewind()
+
 class MP3File(AudioFile):
 
   def __init__(self, filename):
@@ -77,14 +83,21 @@ class MP3File(AudioFile):
     rsz = 4*n
     if len(self.buffer) < rsz:
       # buffer is missing data to satisfy read size
-      self.buffer += self.mf.read()
+      block = self.mf.read()
+      if block is not None:
+        self.buffer += block
 
     block = self.buffer[:rsz]
     self.buffer = self.buffer[rsz:]
+    print len(block)
     return block
 
   def close(self):
     pass
+
+  def rewind(self):
+    self.mf.seek_time(0)
+    self.buffer = bytearray()
 
 class MixerPlayer:
   def __init__(self, mixer, p):
@@ -174,9 +187,13 @@ class MixerPlayer:
                                 output_device_index=self.output_device_index)
   
   def play(self):
+    if self.stream is None:
+      return
     self.stream.start_stream()
 
   def stop(self):
+    if self.stream is None:
+      return
     self.stream.stop_stream()
 
   def mute(self, b):
