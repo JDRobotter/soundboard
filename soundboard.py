@@ -18,7 +18,7 @@ class GUIPlayer:
   def __init__(self, app,
                 xy = None,
                 looped=None, muted=None,
-                filename=None, device_name=None, device_mode=None,
+                filename=None, 
                 gain=None):
     self.app = app
     self.xy = xy
@@ -125,50 +125,6 @@ class GUIPlayer:
     button.set_size_request(40,40)
     hbox.pack_start(button,False,False)
  
-    # CONFIGURE
-    button = gtk.Button("C")
-    def _on_button_clicked(w):
-      dialog = gtk.Dialog("Configure",
-                  None,
-                  gtk.DIALOG_MODAL|gtk.DIALOG_DESTROY_WITH_PARENT,
-                  (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT,
-                    gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
-      
-      frame = gtk.Frame("Output interface")
-      cb = gtk.combo_box_new_text()
-      for device in self.app.mixer.get_devices_using_api():
-        cb.append_text(device)
-      cb.set_active(0)
-      frame.add(cb)
-      dialog.vbox.pack_start(frame)
-      device_cb = cb
-      
-      frame = gtk.Frame("Output mode")
-      cb = gtk.combo_box_new_text()
-      cb.append_text("Stereo")
-      cb.append_text("Right")
-      cb.append_text("Left")
-      cb.set_active(0)
-      frame.add(cb)
-      dialog.vbox.pack_start(frame)
-      mode_cb = cb
-      
-      dialog.vbox.show_all()
-
-      r = dialog.run()
-      if r == gtk.RESPONSE_ACCEPT:
-        try:
-          self.set_output_device(device_cb.get_active_text())
-          self.set_output_device_mode(mode_cb.get_active_text())
-        except Exception as e:
-          print str(e)
-
-      dialog.destroy()
-
-    button.connect('clicked', _on_button_clicked)
-    button.set_size_request(40,40)
-    hbox.pack_start(button,False,False)
- 
     # setup controls
     if looped is not None:
       self.loop_button.set_active(looped)
@@ -176,10 +132,6 @@ class GUIPlayer:
       self.mute_button.set_active(muted)
     if filename is not None:
       self.load_file(filename)
-    if device_name is not None:
-      self.set_output_device(device_name)
-    if device_mode is not None:
-      self.set_output_device_mode(device_mode)
     if gain is not None:
       self.volume_vscale.set_value(100.0*gain)
 
@@ -188,10 +140,6 @@ class GUIPlayer:
 
   def set_output_device(self, device):
     self.mixer_player.set_output_device(device)
-    self.config_set('device',device)
-
-  def set_output_device_mode(self, mode):
-    self.config_set('mode',mode)
 
   def load_file(self, filename):
     self.mixer_player.load_wav(filename)
@@ -219,7 +167,7 @@ class GUIPlayer:
     self.progressbar.set_fraction(level)
 
   def destroy(self):
-    self.mixer_player.shutdown()
+    self.mixer.remove_player(self.mixer_player)
 
 class SoundBoard:
   
@@ -234,22 +182,76 @@ class SoundBoard:
 
     self.window = gtk.Window()
 
-    self.window.set_geometry_hints(self.window,
-      min_width=SoundBoard.W, min_height=SoundBoard.H,
-      base_width=SoundBoard.W, base_height=SoundBoard.H,
-      width_inc=SoundBoard.W, height_inc=SoundBoard.H)
-
     self.window.connect('expose-event', self.on_expose_event)
     self.window.connect('check-resize', self.on_check_resize)
     self.window.connect('delete-event', self.on_delete_event)
 
     self.table = gtk.Table(homogeneous=False)
-    self.window.add(self.table)
+
+    vbox = gtk.VBox()
+    self.window.add(vbox)
+ 
+    # menu
+    menu = gtk.Menu()
+
+    mi = gtk.MenuItem("Output device")
+    def _item_activated(widget):
+      dialog = gtk.Dialog("Choose output device",
+                          self.window,
+                          gtk.DIALOG_MODAL|gtk.DIALOG_DESTROY_WITH_PARENT,
+                          (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT,
+                          gtk.STOCK_OK, gtk.RESPONSE_ACCEPT))
+
+
+      cb = gtk.combo_box_new_text()
+      devices = self.mixer.get_devices_using_api()
+      for device in devices:
+        cb.append_text(device)
+      cb.set_active(devices.index(self.mixer.get_output_device()))
+      dialog.vbox.pack_start(cb)
+      
+      dialog.vbox.show_all()
+      r = dialog.run()
+
+      if r == gtk.RESPONSE_ACCEPT:
+        device = cb.get_active_text()
+        self.mixer.set_output_device(device)
+        config.set(None,'output-device', device)
+
+      dialog.destroy()
+    mi.connect("activate", _item_activated)
+    menu.append(mi)
+
+    rootmenu = gtk.MenuItem("Configure")
+    rootmenu.set_submenu(menu)
+
+    menubar = gtk.MenuBar()
+    menubar.append(rootmenu)
+    vbox.pack_start(menubar,False,False)
+
+    # table
+    vbox.pack_start(self.table)
+
+    wh = self.config.get(None,'window-wh')
+    if wh is not None:
+      w,h = wh
+      self.window.resize(w,h)
+
+    self.menu_height_px = 20
+
+    self.window.set_geometry_hints(self.window,
+      min_width=SoundBoard.W, min_height=SoundBoard.H+self.menu_height_px,
+      base_width=SoundBoard.W, base_height=SoundBoard.H+self.menu_height_px,
+      width_inc=SoundBoard.W, height_inc=SoundBoard.H)
 
     self.window.show_all()
 
   def on_check_resize(self, widget):
-    w,h = self.window.get_size()
+    rw,rh = self.window.get_size()
+    
+    w = rw
+    h = rh - self.menu_height_px
+
     n,m = w/SoundBoard.W, h/SoundBoard.H
 
     if (n,m) == self.psize:
@@ -285,6 +287,9 @@ class SoundBoard:
 
     self.table.show_all()
 
+    # store size in configuration
+    self.config.set(None, "window-wh", (rw,rh))
+
   def on_expose_event(self, widget, event):
     pass
 
@@ -293,22 +298,16 @@ class SoundBoard:
     return False
 
   def remove_player_xy(self, x, y):
-    print "removing",x,y
     player = self.players[(x,y)]
     self.table.remove(player.widget)
     player.destroy()
 
   def add_player_xy(self, x, y):
-    print "adding",x,y
-    
     xy = (x,y)
-
     player = GUIPlayer(self, xy,
                         looped = self.config.get(xy,'loop'),
                         muted = self.config.get(xy,'mute'),
                         filename = self.config.get(xy,'filename'),
-                        device_name = self.config.get(xy,'device'),
-                        device_mode = self.config.get(xy,'mode'),
                         gain = self.config.get(xy,'gain'))
     self.players[(x,y)] = player
     self.table.attach(player.widget,x,x+1,y,y+1)
@@ -321,8 +320,9 @@ def main():
 
   gobject.threads_init()
 
-  mixer = SoundBoardMixer()
   config = SoundBoardConfig()
+  mixer = SoundBoardMixer()
+  mixer.set_output_device(config.get(None,'output-device'))
 
   sb = SoundBoard(mixer,config)
   sb.run()

@@ -134,6 +134,9 @@ class MixerPlayer:
       self.stream.close()
       self.af.close()
 
+    if self.filename is None:
+      return
+
     # load wave file
     self.af = AudioFile.load_file(self.filename)
     n = self.af.get_nchannels()
@@ -222,8 +225,10 @@ class SoundBoardMixer:
 
   def __init__(self):
     self.p = pyaudio.PyAudio()
-  
+    self.players = []
+
     self.api_index = self.p.get_default_host_api_info()['index']
+    self.output_device = self.p.get_default_output_device_info()['name']
 
   def get_device_index_by_name(self, device):
     for i in xrange(0,self.p.get_device_count()):
@@ -235,9 +240,25 @@ class SoundBoardMixer:
     devices = []
     for i in xrange(0,self.p.get_device_count()):
       obj = self.p.get_device_info_by_index(i)
-      if obj['hostApi'] == self.api_index:
+      if obj['hostApi'] == self.api_index and obj['maxOutputChannels'] >= 2:
         devices.append(obj['name'])
     return devices
 
   def new_player(self):
-    return MixerPlayer(self, self.p)
+    player = MixerPlayer(self, self.p)
+    player.set_output_device(self.output_device)
+    self.players.append(player)
+    return player
+
+  def remove_player(self, player):
+    self.players.remove(player)
+
+  def set_output_device(self, device):
+    if device is None:
+      device = self.p.get_default_output_device_info()['name']
+    self.output_device = device
+    for player in self.players:
+      player.set_output_device(device)
+
+  def get_output_device(self):
+    return self.output_device
