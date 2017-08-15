@@ -62,12 +62,10 @@ class MP3File(AudioFile):
 
   def __init__(self, filename):
     self.mf = mad.MadFile(filename)
+    self.buffer = bytearray()
 
   def get_nchannels(self):
-    if self.mf.mode() == 3:
-      return 2
-    else:
-      return 2
+    return 2
 
   def get_samplerate(self):
     return self.mf.samplerate()
@@ -76,8 +74,14 @@ class MP3File(AudioFile):
     return 2
 
   def readframes(self,n):
-    print "readframes",n
-    return self.mf.read(n)
+    rsz = 4*n
+    if len(self.buffer) < rsz:
+      # buffer is missing data to satisfy read size
+      self.buffer += self.mf.read()
+
+    block = self.buffer[:rsz]
+    self.buffer = self.buffer[rsz:]
+    return block
 
   def close(self):
     pass
@@ -125,7 +129,6 @@ class MixerPlayer:
     def callback(in_data, frame_count, time_info, status):
       data = self.af.readframes(frame_count)
       samples = np.frombuffer(data, dtype=np.int16)
-      print samples
 
       if self.gain != 1.0:
         samples = self.gain*samples

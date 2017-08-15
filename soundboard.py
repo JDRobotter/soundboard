@@ -240,7 +240,7 @@ class SoundBoard:
 
     self.window.connect('expose-event', self.on_expose_event)
     self.window.connect('check-resize', self.on_check_resize)
-
+    self.window.connect('delete-event', self.on_delete_event)
 
     self.table = gtk.Table(homogeneous=False)
     self.window.add(self.table)
@@ -286,6 +286,10 @@ class SoundBoard:
 
   def on_expose_event(self, widget, event):
     pass
+
+  def on_delete_event(self, widget, event):
+    gtk.main_quit()
+    return False
 
   def remove_player_xy(self, x, y):
     print "removing",x,y
