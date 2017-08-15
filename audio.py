@@ -1,13 +1,93 @@
 import pyaudio,wave,time
+import mad
+import os
 from threading import Thread
 import numpy as np
+
+class AudioFile:
+
+  @classmethod
+  def load_file(cls, filename):
+    basename = os.path.basename(filename)
+    _,ext = os.path.splitext(basename)
+
+    if ext == '.mp3':
+      return MP3File(filename)
+
+    elif ext == '.wav':
+      return WaveFile(filename)
+
+    else:
+      return None
+
+  def __init__(self, filename):
+    pass
+
+  def get_nchannels(self):
+    pass
+
+  def get_samplerate(self):
+    pass
+
+  def get_samplewidth(self):
+    pass
+
+  def readframes(self):
+    pass
+
+  def close(self):
+    pass
+
+class WaveFile(AudioFile):
+
+  def __init__(self, filename):
+    self.wf = wave.open(filename, 'rb')
+
+  def get_nchannels(self):
+    return self.wf.getnchannels()
+
+  def get_samplerate(self):
+    return self.wf.getframerate()
+
+  def get_samplewidth(self):
+    return self.wf.getsampwidth()
+
+  def readframes(self, n):
+    return self.wf.readframes(n)
+
+  def close(self):
+    self.wf.close()
+
+class MP3File(AudioFile):
+
+  def __init__(self, filename):
+    self.mf = mad.MadFile(filename)
+
+  def get_nchannels(self):
+    if self.mf.mode() == 3:
+      return 2
+    else:
+      return 2
+
+  def get_samplerate(self):
+    return self.mf.samplerate()
+
+  def get_samplewidth(self):
+    return 2
+
+  def readframes(self,n):
+    print "readframes",n
+    return self.mf.read(n)
+
+  def close(self):
+    pass
 
 class MixerPlayer:
   def __init__(self, mixer, p):
     self.p = p
     self.mixer = mixer
     self.stream = None
-    self.wf = None
+    self.af = None
     self.filename = None
 
     self.muted = False
@@ -34,18 +114,18 @@ class MixerPlayer:
     if self.stream is not None and self.stream.is_active():
       self.stream.stop_stream()
       self.stream.close()
-      self.wf.close()
+      self.af.close()
 
     # load wave file
-    self.wf = wave.open(self.filename, 'rb')
-    sw = self.wf.getsampwidth()
-    n = self.wf.getnchannels()
-    rate = self.wf.getframerate()
-    print "reset",self.filename,sw,n,rate
+    self.af = AudioFile.load_file(self.filename)
+    n = self.af.get_nchannels()
+    rate = self.af.get_samplerate()
+    sw = self.af.get_samplewidth()
     # prepare stream
     def callback(in_data, frame_count, time_info, status):
-      data = self.wf.readframes(frame_count)
+      data = self.af.readframes(frame_count)
       samples = np.frombuffer(data, dtype=np.int16)
+      print samples
 
       if self.gain != 1.0:
         samples = self.gain*samples
@@ -58,13 +138,13 @@ class MixerPlayer:
 
       # check if last packet was fetched
       rv = pyaudio.paContinue
-      if len(data) != sw*n*frame_count:
+      if len(data) < sw*n*frame_count:
         # last frame
         
         if self.loop:
           # reload sample, load missing frames from beginning
-          self.wf.rewind()
-          data = self.wf.readframes(frame_count - len(data)/(sw*n))
+          self.af.rewind()
+          data = self.af.readframes(frame_count - len(data)/(sw*n))
           samples = np.concatenate((samples, np.frombuffer(data, dtype=np.int16)))
 
         else:
@@ -81,6 +161,7 @@ class MixerPlayer:
       return (data, rv)
 
     # create stream, do not start it
+    print "stream",sw,n,rate,self.output_device_index
     self.stream = self.p.open(format=self.p.get_format_from_width(sw),
                                 channels=n,
                                 rate=rate,
@@ -112,8 +193,8 @@ class MixerPlayer:
     if self.stream is not None:
       self.stream.stop_stream()
       self.stream.close()
-    if self.wf is not None:
-      self.wf.close()
+    if self.af is not None:
+      self.af.close()
 
 class SoundBoardMixer:
 
