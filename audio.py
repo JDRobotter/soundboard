@@ -189,7 +189,7 @@ class MixerPlayer:
                                 stream_callback=callback,
                                 start=False,
                                 output_device_index=self.output_device_index,
-                                frames_per_buffer=2048)
+                                frames_per_buffer=1024*4)
   
   def play(self):
     if self.stream is None:

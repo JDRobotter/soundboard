@@ -1,20 +1,23 @@
 #!/usr/bin/env python
 import json
 import os.path
+import sys
 
 class SoundBoardConfig:
   
   def __init__(self):
     self.kvs = {}
+    self.pgname = sys.argv[0]
+    print "config pgname",self.pgname
     self.filename = os.path.join(os.path.expanduser('~'),'.soundboard.json')
     self.load()
 
   def key(self, xy, k):
     if xy is None:
-      return "global:%s"%(k)
+      return "%s:global:%s"%(self.pgname,k)
     else:
       x,y = xy
-      return "%d:%d:%s"%(x,y,k)
+      return "%s:%d:%d:%s"%(self.pgname,x,y,k)
 
   def set(self, xy, k, v):
     print "set",xy,k,v
