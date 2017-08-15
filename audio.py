@@ -81,15 +81,16 @@ class MP3File(AudioFile):
 
   def readframes(self,n):
     rsz = 4*n
-    if len(self.buffer) < rsz:
+    while len(self.buffer) < rsz:
       # buffer is missing data to satisfy read size
       block = self.mf.read()
       if block is not None:
         self.buffer += block
+      else:
+        break
 
     block = self.buffer[:rsz]
     self.buffer = self.buffer[rsz:]
-    print len(block)
     return block
 
   def close(self):
@@ -184,7 +185,8 @@ class MixerPlayer:
                                 output=True,
                                 stream_callback=callback,
                                 start=False,
-                                output_device_index=self.output_device_index)
+                                output_device_index=self.output_device_index,
+                                frames_per_buffer=2048)
   
   def play(self):
     if self.stream is None:
