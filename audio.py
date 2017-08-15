@@ -7,6 +7,7 @@ class MixerPlayer:
     self.p = p
     self.mixer = mixer
     self.stream = None
+    self.wf = None
     self.filename = None
 
     self.muted = False
@@ -33,16 +34,17 @@ class MixerPlayer:
     if self.stream is not None and self.stream.is_active():
       self.stream.stop_stream()
       self.stream.close()
+      self.wf.close()
 
     # load wave file
-    wf = wave.open(self.filename, 'rb')
-    sw = wf.getsampwidth()
-    n = wf.getnchannels()
-    rate = wf.getframerate()
+    self.wf = wave.open(self.filename, 'rb')
+    sw = self.wf.getsampwidth()
+    n = self.wf.getnchannels()
+    rate = self.wf.getframerate()
     print "reset",self.filename,sw,n,rate
     # prepare stream
     def callback(in_data, frame_count, time_info, status):
-      data = wf.readframes(frame_count)
+      data = self.wf.readframes(frame_count)
       samples = np.frombuffer(data, dtype=np.int16)
 
       if self.gain != 1.0:
@@ -61,8 +63,8 @@ class MixerPlayer:
         
         if self.loop:
           # reload sample, load missing frames from beginning
-          wf.rewind()
-          data = wf.readframes(frame_count - len(data)/(sw*n))
+          self.wf.rewind()
+          data = self.wf.readframes(frame_count - len(data)/(sw*n))
           samples = np.concatenate((samples, np.frombuffer(data, dtype=np.int16)))
 
         else:
@@ -105,6 +107,13 @@ class MixerPlayer:
   def set_output_device(self, device):
     self.output_device_index = self.mixer.get_device_index_by_name(device)
     self.reset()
+
+  def shutdown(self):
+    if self.stream is not None:
+      self.stream.stop_stream()
+      self.stream.close()
+    if self.wf is not None:
+      self.wf.close()
 
 class SoundBoardMixer:
 

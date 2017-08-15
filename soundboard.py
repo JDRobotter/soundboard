@@ -2,7 +2,8 @@
 
 import gtk,gobject,pango
 
-import audio
+from audio import SoundBoardMixer
+from config import SoundBoardConfig
 
 def gobject_idle_add(f):
   """ Use this as a decorator to delegate call to gtk main loop,
@@ -13,11 +14,13 @@ def gobject_idle_add(f):
 
 class GUIPlayer:
   
-  TEST_WAVS=["tests/codeccall.wav","tests/laugh.wav","tests/sultans.wav","tests/subterraneans.wav"]
-  TEST_IT=0
-
-  def __init__(self, app):
+  def __init__(self, app,
+                xy = None,
+                looped=None, muted=None,
+                filename=None, device_name=None, device_mode=None,
+                gain=None):
     self.app = app
+    self.xy = xy
 
     self.mixer_player = self.app.mixer.new_player()
     self.mixer_player.register_stop_callback(self.player_stop_event)
@@ -25,7 +28,8 @@ class GUIPlayer:
 
     # base widget
     frame = gtk.Frame()
-    frame.set_size_request(200,200)
+    w,h = SoundBoard.W, SoundBoard.H
+    frame.set_size_request(w-10,h-10)
 
     align = gtk.Alignment()
     align.set_padding(5,5,5,5)
@@ -37,7 +41,6 @@ class GUIPlayer:
     # ui
     hbox = gtk.HBox()
     frame.add(hbox)
-
 
     vbox = gtk.VBox()
     hbox.pack_start(vbox)
@@ -70,6 +73,7 @@ class GUIPlayer:
 
     vscale.connect('change-value', _on_scale_changed)
     vbox.pack_start(vscale,False,False)
+    self.volume_vscale = vscale
 
     # button bar
     hbox = gtk.HBox()
@@ -82,6 +86,7 @@ class GUIPlayer:
     button.connect('clicked', _on_button_clicked)
     button.set_size_request(40,40)
     hbox.pack_start(button,False,False)
+    self.loop_button = button
 
     # MUTE
     button = gtk.ToggleButton("M")
@@ -91,6 +96,7 @@ class GUIPlayer:
     button.connect('clicked', _on_button_clicked)
     button.set_size_request(40,40)
     hbox.pack_start(button,False,False)
+    self.mute_button = button
     
     # OPEN
     button = gtk.Button("O")
@@ -152,6 +158,7 @@ class GUIPlayer:
       if r == gtk.RESPONSE_ACCEPT:
         try:
           self.set_output_device(device_cb.get_active_text())
+          self.set_output_device_mode(mode_cb.get_active_text())
         except Exception as e:
           print str(e)
 
@@ -161,27 +168,46 @@ class GUIPlayer:
     button.set_size_request(40,40)
     hbox.pack_start(button,False,False)
  
+    # setup controls
+    if looped is not None:
+      self.loop_button.set_active(looped)
+    if muted is not None:
+      self.mute_button.set_active(muted)
+    if filename is not None:
+      self.load_file(filename)
+    if device_name is not None:
+      self.set_output_device(device_name)
+    if device_mode is not None:
+      self.set_output_device_mode(device_mode)
+    if gain is not None:
+      self.volume_vscale.set_value(gain)
 
-    # DEBUG
-    fname = GUIPlayer.TEST_WAVS[GUIPlayer.TEST_IT]
-    GUIPlayer.TEST_IT+=1
-    self.load_file(fname)
+  def config_set(self, key, value):
+    self.app.config.set(self.xy, key, value)
 
   def set_output_device(self, device):
     self.mixer_player.set_output_device(device)
+    self.config_set('device',device)
+
+  def set_output_device_mode(self, mode):
+    self.config_set('mode',mode)
 
   def load_file(self, filename):
     self.mixer_player.load_wav(filename)
     self.frame.set_label(filename)
+    self.config_set('filename',filename)
 
   def set_player_gain(self, gain):
     self.mixer_player.set_gain(gain)
+    self.config_set('gain',gain)
 
   def mute_player(self, b):
     self.mixer_player.mute(b)
+    self.config_set('mute',b)
 
   def loop_player(self, b):
     self.mixer_player.set_loop(b)
+    self.config_set('loop',b)
 
   @gobject_idle_add
   def player_stop_event(self):
@@ -191,37 +217,95 @@ class GUIPlayer:
   def player_status_event(self,level):
     self.progressbar.set_fraction(level)
 
+  def destroy(self):
+    self.mixer_player.shutdown()
+
 class SoundBoard:
   
-  def __init__(self, mixer):
+  W,H = 200,200
+
+  def __init__(self, mixer, config):
     self.mixer = mixer
+    self.config = config
+
+    self.psize = (0,0)
+    self.players = {}
 
     self.window = gtk.Window()
 
-    self.window.set_geometry_hints(self.window, width_inc=100, height_inc=100)
+    self.window.set_geometry_hints(self.window,
+      min_width=SoundBoard.W, min_height=SoundBoard.H,
+      base_width=SoundBoard.W, base_height=SoundBoard.H,
+      width_inc=SoundBoard.W, height_inc=SoundBoard.H)
 
     self.window.connect('expose-event', self.on_expose_event)
     self.window.connect('check-resize', self.on_check_resize)
 
 
-    self.table = gtk.Table(2,2,homogeneous=True)
+    self.table = gtk.Table(homogeneous=False)
     self.window.add(self.table)
-
-    self.add_player_xy(0,0)
-    self.add_player_xy(1,0)
-    self.add_player_xy(0,1)
-    self.add_player_xy(1,1)
 
     self.window.show_all()
 
   def on_check_resize(self, widget):
-    pass
+    w,h = self.window.get_size()
+    n,m = w/SoundBoard.W, h/SoundBoard.H
+
+    if (n,m) == self.psize:
+      return
+
+    pn,pm = self.psize
+    rm = set()
+    for i in xrange(n,pn):
+      for j in xrange(0,pm):
+        rm.add((i,j))
+    for j in xrange(m,pm):
+      for i in xrange(0,pn):
+        rm.add((i,j))
+    
+    for i,j in rm:
+      self.remove_player_xy(i,j)
+
+    self.psize = (n,m)
+
+    # fetch current size
+    self.table.resize(n,m)
+
+    new = set()
+    for i in xrange(pn,n):
+      for j in xrange(0,m):
+        new.add((i,j))
+    for j in xrange(pm,m):
+      for i in xrange(0,n):
+        new.add((i,j))
+   
+    for i,j in new:
+      self.add_player_xy(i,j)
+
+    self.table.show_all()
 
   def on_expose_event(self, widget, event):
     pass
 
+  def remove_player_xy(self, x, y):
+    print "removing",x,y
+    player = self.players[(x,y)]
+    self.table.remove(player.widget)
+    player.destroy()
+
   def add_player_xy(self, x, y):
-    player = GUIPlayer(self)
+    print "adding",x,y
+    
+    xy = (x,y)
+
+    player = GUIPlayer(self, xy,
+                        looped = self.config.get(xy,'loop'),
+                        muted = self.config.get(xy,'mute'),
+                        filename = self.config.get(xy,'filename'),
+                        device_name = self.config.get(xy,'device'),
+                        device_mode = self.config.get(xy,'mode'),
+                        gain = self.config.get(xy,'gain'))
+    self.players[(x,y)] = player
     self.table.attach(player.widget,x,x+1,y,y+1)
   
   def run(self):
@@ -232,11 +316,11 @@ def main():
 
   gobject.threads_init()
 
-  mixer = audio.SoundBoardMixer()
+  mixer = SoundBoardMixer()
+  config = SoundBoardConfig()
 
-  sb = SoundBoard(mixer)
+  sb = SoundBoard(mixer,config)
   sb.run()
-
 
 if __name__ == '__main__':
   main()
