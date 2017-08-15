@@ -150,6 +150,7 @@ class GUIPlayer:
     self.config_set('filename',filename)
 
   def set_player_gain(self, gain):
+    gain = min(max(gain,0.0),1.25)
     self.mixer_player.set_gain(gain)
     self.config_set('gain',gain)
 
