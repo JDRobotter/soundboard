@@ -171,7 +171,7 @@ class GUIPlayer:
     self.progressbar.set_fraction(level)
 
   def destroy(self):
-    self.mixer.remove_player(self.mixer_player)
+    self.app.mixer.remove_player(self.mixer_player)
 
 class SoundBoard:
   
